@@ -1,0 +1,549 @@
+
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Gestão Financeira Multicontas (Nuvem Automático)</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  
+  <!-- SDKs do Firebase -->
+  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+
+  <style>
+    :root {
+      --bg: #0b0f19;
+      --card: #151c2c;
+      --accent: #3b82f6;
+      --text: #f8fafc;
+      --text-muted: #94a3b8;
+      --green: #10b981;
+      --red: #ef4444;
+      --yellow: #f59e0b;
+      --purple: #8b5cf6;
+      --border: #1e293b;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    body { background-color: var(--bg); color: var(--text); padding: 20px 15px; max-width: 800px; margin: 0 auto; }
+    
+    .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+    .header h1 { font-size: 1.3rem; color: var(--accent); }
+    .month-filter select { background: var(--card); color: var(--text); border: 1px solid var(--border); padding: 8px 12px; border-radius: 8px; font-weight: bold; }
+
+    .card { background: var(--card); padding: 20px; border-radius: 16px; margin-bottom: 20px; border: 1px solid var(--border); }
+    
+    .grid-dashboard { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 15px; }
+    .metric { background: rgba(255,255,255,0.02); padding: 12px; border-radius: 10px; border: 1px solid var(--border); }
+    .metric span { font-size: 0.75rem; color: var(--text-muted); display: block; margin-bottom: 4px; }
+    .metric strong { font-size: 1.15rem; }
+    .green { color: var(--green); }
+    .red { color: var(--red); }
+    .purple { color: var(--purple); }
+    
+    .progress-container { margin-top: 15px; }
+    .progress-info { display: flex; justify-content: space-between; font-size: 0.8rem; margin-bottom: 5px; }
+    .progress-bar-bg { background: var(--border); height: 10px; border-radius: 5px; overflow: hidden; }
+    .progress-bar-fill { height: 100%; width: 0%; transition: width 0.3s, background-color 0.3s; }
+
+    .main-grid { display: grid; grid-template-columns: 1fr; gap: 20px; }
+    @media(min-width: 650px) { .main-grid { grid-template-columns: 1fr 1fr; } }
+
+    form label { display: block; font-size: 0.8rem; color: var(--text-muted); margin-top: 10px; }
+    form input, form select, form button { width: 100%; padding: 10px; margin-top: 4px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); color: var(--text); font-size: 0.9rem; }
+    form button { background: var(--accent); color: white; border: none; font-weight: bold; cursor: pointer; margin-top: 15px; padding: 12px; }
+    
+    .table-container { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; text-align: left; font-size: 0.85rem; }
+    th, td { padding: 12px 8px; border-bottom: 1px solid var(--border); }
+    th { color: var(--text-muted); font-weight: 600; }
+    .btn-delete { background: none; border: none; color: var(--red); cursor: pointer; font-size: 1rem; }
+
+    .status-sync { display: inline-block; font-size: 0.75rem; padding: 4px 8px; border-radius: 6px; background: rgba(16, 185, 129, 0.1); color: var(--green); border: 1px solid var(--green); }
+    .invest-box { background: rgba(139, 92, 246, 0.08); border: 1px dashed var(--purple); padding: 10px; border-radius: 8px; margin-top: 10px; }
+    .entrada-box { background: rgba(16, 185, 129, 0.08); border: 1px dashed var(--green); padding: 10px; border-radius: 8px; margin-top: 10px; }
+  </style>
+</head>
+<body>
+
+  <div class="header">
+    <h1>💼 Finanças Multicontas</h1>
+    <span class="status-sync" id="statusSync">☁️ Sincronizado</span>
+    <div class="month-filter">
+      <select id="selMes" onchange="atualizarInterface()"></select>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2 style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 10px;">Saldos em Conta / Investimentos</h2>
+    <div class="grid-dashboard">
+      <div class="metric"><span>Conta Itaú</span><strong id="txtSaldoItau">R$ 0,00</strong></div>
+      <div class="metric"><span>Conta Nubank</span><strong id="txtSaldoNubank">R$ 0,00</strong></div>
+      <div class="metric"><span>Reserva + Rendimento (XP)</span><strong class="purple" id="txtSaldoXP">R$ 0,00</strong></div>
+      <div class="metric"><span>Patrimônio Total</span><strong class="green" id="txtPatrimonio">R$ 0,00</strong></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2 style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 10px;">Faturas de Cartão de Crédito (Mês Atual)</h2>
+    
+    <div class="progress-container">
+      <div class="progress-info">
+        <span>💳 Samsung Itaú (Teto R$ 2.000 | Fechamento Dia 21)</span>
+        <strong id="txtCartaoSamsungInfo">R$ 0,00 / R$ 2.000,00</strong>
+      </div>
+      <div class="progress-bar-bg">
+        <div class="progress-bar-fill" id="barCartaoSamsung"></div>
+      </div>
+    </div>
+
+    <div class="progress-container">
+      <div class="progress-info">
+        <span>💳 LATAM Pass Itaú (Fechamento Dia 18)</span>
+        <strong id="txtCartaoLatamInfo">R$ 0,00</strong>
+      </div>
+      <div class="progress-bar-bg">
+        <div class="progress-bar-fill" id="barCartaoLatam" style="background-color: #f59e0b;"></div>
+      </div>
+    </div>
+
+    <div class="progress-container">
+      <div class="progress-info">
+        <span>💳 Nubank (Fechamento Dia 30)</span>
+        <strong id="txtCartaoNubankInfo">R$ 0,00</strong>
+      </div>
+      <div class="progress-bar-bg">
+        <div class="progress-bar-fill" id="barCartaoNubank" style="background-color: #8b5cf6;"></div>
+      </div>
+    </div>
+
+    <div class="progress-container" style="margin-top: 25px; border-top: 1px solid var(--border); padding-top: 15px;">
+      <div class="progress-info">
+        <span>🎯 Meta Reserva XP (Visa Infinite)</span>
+        <strong id="txtReservaInfo">R$ 0,00 / R$ 5.000,00</strong>
+      </div>
+      <div class="progress-bar-bg">
+        <div class="progress-bar-fill" id="barReserva" style="background-color: var(--purple);"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="main-grid">
+    <div class="card">
+      <h2 style="font-size: 1rem; margin-bottom: 10px;">Novo Lançamento</h2>
+      <form id="financeForm">
+        <label>Data</label>
+        <input type="date" id="data" required>
+
+        <label>Descrição</label>
+        <input type="text" id="desc" placeholder="Ex: Salário, Mercado, Aporte CDB" required>
+
+        <label>Valor (R$)</label>
+        <input type="number" id="valor" step="0.01" placeholder="0,00" required>
+
+        <label>Tipo de Operação</label>
+        <select id="tipo" onchange="toggleCamposOperacao()">
+          <option value="Saída">Saída (Despesa / Gasto)</option>
+          <option value="Entrada">Entrada (Receita / Salário / Ganho)</option>
+          <option value="Transferência">Transferência entre Minhas Contas</option>
+        </select>
+
+        <!-- CAMPO EXCLUSIVO DE ENTRADA -->
+        <div id="boxOrigemEntrada" class="entrada-box" style="display: none;">
+          <label style="color: var(--green); font-weight: bold; margin-top: 0;">Detalhes da Receita</label>
+          <label>Origem / Empresa / Fonte do Dinheiro</label>
+          <input type="text" id="fonteEntrada" placeholder="Ex: Empresa X, Freelance, Venda OLX, Pix Pai">
+        </div>
+
+        <label>Forma de Pagamento / Meio</label>
+        <select id="forma" onchange="toggleCamposForma()">
+          <option value="Pix">Pix</option>
+          <option value="Débito">Débito em Conta</option>
+          <option value="Cartão de Crédito">Cartão de Crédito (Fatura)</option>
+          <option value="Boleto">Boleto</option>
+          <option value="Dinheiro">Dinheiro</option>
+        </select>
+
+        <div id="boxContaDebito">
+          <label id="lblContaBancaria">Conta Bancária Afetada</label>
+          <select id="conta">
+            <option value="Itaú">Itaú</option>
+            <option value="Nubank">Nubank</option>
+            <option value="XP">XP Investimentos</option>
+          </select>
+        </div>
+
+        <div id="boxCartaoCredito" style="display: none;">
+          <label>Qual Cartão de Crédito Foi Usado?</label>
+          <select id="cartaoUsado">
+            <option value="Samsung Itaú">Samsung Itaú</option>
+            <option value="LATAM Pass">LATAM Pass Itaú</option>
+            <option value="Nubank">Nubank</option>
+          </select>
+        </div>
+
+        <div id="boxTransferencia" style="display: none;">
+          <label>Conta Origem (De onde sai)</label>
+          <select id="contaOrigem">
+            <option value="Itaú">Itaú</option>
+            <option value="Nubank">Nubank</option>
+          </select>
+
+          <label>Conta Destino (Para onde vai)</label>
+          <select id="contaDestino" onchange="toggleCamposInvestimento()">
+            <option value="XP">XP Investimentos (Reserva)</option>
+            <option value="Itaú">Itaú</option>
+            <option value="Nubank">Nubank</option>
+          </select>
+        </div>
+
+        <label>Categoria</label>
+        <select id="categoria" onchange="toggleCamposInvestimento()">
+          <option value="Alimentação">Alimentação</option>
+          <option value="Moradia">Moradia</option>
+          <option value="Transporte">Transporte</option>
+          <option value="Lazer">Lazer</option>
+          <option value="Fixas/Assinaturas">Fixas/Assinaturas</option>
+          <option value="Reserva/Investimento">Reserva/Investimento</option>
+          <option value="Outros">Outros</option>
+        </select>
+
+        <div id="boxInvestimento" class="invest-box" style="display: none;">
+          <label style="color: var(--purple); font-weight: bold; margin-top: 0;">Configuração do Investimento</label>
+          <label>Nome do Investimento</label>
+          <input type="text" id="nomeInvest" placeholder="Ex: CDB XP 100% CDI, LCI, Tesouro">
+          <label>Taxa de Juros (% ao ano)</label>
+          <input type="number" id="taxaInvest" step="0.01" value="10.50" placeholder="10.50">
+        </div>
+
+        <button type="submit">Salvar na Nuvem</button>
+      </form>
+    </div>
+
+    <div class="card" style="display: flex; flex-direction: column; align-items: center; justify-content: center;">
+      <h2 style="font-size: 1rem; margin-bottom: 15px; width: 100%;">Despesas do Mês por Categoria</h2>
+      <div style="width: 100%; max-width: 250px;">
+        <canvas id="chartCategorias"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2 style="font-size: 1rem; margin-bottom: 15px;">Extrato Geral (Nuvem)</h2>
+    <div class="table-container">
+      <table>
+        <thead>
+          <tr>
+            <th>Data</th>
+            <th>Descrição</th>
+            <th>Operação</th>
+            <th>Meio / Conta / Origem</th>
+            <th>Valor</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="tbHistorico"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <script>
+    // =====================================================
+    // 1. COLE SUAS CREDENCIAIS DO FIREBASE AQUI ABAIXO:
+    // =====================================================
+    const firebaseConfig = {
+    apiKey: "AIzaSyB0XKUp_eY04Hx7Bpavtvv-7rQvRa5LF-I",
+    authDomain: "minhas-financas-726f9.firebaseapp.com",
+    projectId: "minhas-financas-726f9",
+    storageBucket: "minhas-financas-726f9.firebasestorage.app",
+    messagingSenderId: "267613743208",
+    appId: "1:267613743208:web:1c8c85d798fe19c977f3dd"
+  };
+
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.firestore();
+
+    let transacoes = [];
+    const TETO_SAMSUNG = 2000.00;
+    const META_RESERVA_XP = 5000.00;
+    let chartInstance = null;
+
+    document.getElementById('data').valueAsDate = new Date();
+
+    db.collection("transacoes").onSnapshot((snapshot) => {
+      transacoes = [];
+      snapshot.forEach((doc) => {
+        transacoes.push({ idDoc: doc.id, ...doc.data() });
+      });
+      document.getElementById('statusSync').innerText = "☁️ Nuvem Sincronizada";
+      document.getElementById('statusSync').style.color = "var(--green)";
+      atualizarInterface();
+    }, (error) => {
+      console.error("Erro na sincronização: ", error);
+      document.getElementById('statusSync').innerText = "⚠️ Erro de Conexão";
+      document.getElementById('statusSync').style.color = "var(--red)";
+    });
+
+    function toggleCamposForma() {
+      const forma = document.getElementById('forma').value;
+      if (forma === 'Cartão de Crédito') {
+        document.getElementById('boxCartaoCredito').style.display = 'block';
+        document.getElementById('boxContaDebito').style.display = 'none';
+      } else {
+        document.getElementById('boxCartaoCredito').style.display = 'none';
+        document.getElementById('boxContaDebito').style.display = 'block';
+      }
+    }
+
+    function toggleCamposOperacao() {
+      const tipo = document.getElementById('tipo').value;
+      const lblConta = document.getElementById('lblContaBancaria');
+      const boxEntrada = document.getElementById('boxOrigemEntrada');
+
+      if (tipo === 'Entrada') {
+        lblConta.innerText = "Conta que Recebeu o Dinheiro";
+        boxEntrada.style.display = 'block';
+      } else {
+        lblConta.innerText = "Conta Bancária Afetada";
+        boxEntrada.style.display = 'none';
+      }
+
+      if (tipo === 'Transferência') {
+        document.getElementById('boxContaDebito').style.display = 'none';
+        document.getElementById('boxCartaoCredito').style.display = 'none';
+        document.getElementById('boxTransferencia').style.display = 'block';
+      } else {
+        document.getElementById('boxTransferencia').style.display = 'none';
+        toggleCamposForma();
+      }
+      toggleCamposInvestimento();
+    }
+
+    function toggleCamposInvestimento() {
+      const cat = document.getElementById('categoria').value;
+      const tipo = document.getElementById('tipo').value;
+      const contaDestino = document.getElementById('contaDestino').value;
+      const contaNormal = document.getElementById('conta').value;
+
+      const isXP = (tipo === 'Transferência' && contaDestino === 'XP') || (tipo !== 'Transferência' && contaNormal === 'XP');
+
+      if (cat === 'Reserva/Investimento' || isXP) {
+        document.getElementById('boxInvestimento').style.display = 'block';
+      } else {
+        document.getElementById('boxInvestimento').style.display = 'none';
+      }
+    }
+
+    function preencherMeses() {
+      const select = document.getElementById('selMes');
+      select.innerHTML = '';
+      const hoje = new Date();
+      
+      for (let i = -6; i <= 6; i++) {
+        const d = new Date(hoje.getFullYear(), hoje.getMonth() + i, 1);
+        const val = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+        const label = d.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+        
+        const opt = document.createElement('option');
+        opt.value = val;
+        opt.innerText = label.charAt(0).toUpperCase() + label.slice(1);
+        if (i === 0) opt.selected = true;
+        select.appendChild(opt);
+      }
+    }
+
+    function calcularDiasUteis(dataInicio, dataFim) {
+      let cont = 0;
+      let cur = new Date(dataInicio);
+      const fim = new Date(dataFim);
+      cur.setHours(0,0,0,0);
+      fim.setHours(0,0,0,0);
+
+      while (cur < fim) {
+        cur.setDate(cur.getDate() + 1);
+        const diaSemana = cur.getDay();
+        if (diaSemana !== 0 && diaSemana !== 6) cont++;
+      }
+      return cont;
+    }
+
+    document.getElementById('financeForm').addEventListener('submit', (e) => {
+      e.preventDefault();
+      document.getElementById('statusSync').innerText = "⏳ Salvando...";
+      
+      const tipo = document.getElementById('tipo').value;
+      const forma = document.getElementById('forma').value;
+      
+      const item = {
+        data: document.getElementById('data').value,
+        desc: document.getElementById('desc').value,
+        valor: parseFloat(document.getElementById('valor').value),
+        tipo: tipo,
+        forma: forma,
+        fonteEntrada: tipo === 'Entrada' ? (document.getElementById('fonteEntrada').value || 'Não informada') : null,
+        cartaoUsado: forma === 'Cartão de Crédito' ? document.getElementById('cartaoUsado').value : null,
+        categoria: document.getElementById('categoria').value,
+        conta: (tipo !== 'Transferência' && forma !== 'Cartão de Crédito') ? document.getElementById('conta').value : null,
+        contaOrigem: tipo === 'Transferência' ? document.getElementById('contaOrigem').value : null,
+        contaDestino: tipo === 'Transferência' ? document.getElementById('contaDestino').value : null,
+        nomeInvest: document.getElementById('nomeInvest').value || 'CDB XP',
+        taxaInvest: parseFloat(document.getElementById('taxaInvest').value) || 10.50,
+        criadoEm: firebase.firestore.FieldValue.serverTimestamp()
+      };
+      
+      db.collection("transacoes").add(item).then(() => {
+        document.getElementById('desc').value = '';
+        document.getElementById('valor').value = '';
+        document.getElementById('fonteEntrada').value = '';
+        document.getElementById('nomeInvest').value = '';
+      });
+    });
+
+    function deletar(idDoc) {
+      if(confirm("Deseja apagar este lançamento da nuvem?")) {
+        db.collection("transacoes").doc(idDoc).delete();
+      }
+    }
+
+    function atualizarInterface() {
+      const mesSel = document.getElementById('selMes').value;
+      const filtradas = transacoes.filter(t => t.data && t.data.startsWith(mesSel));
+      const hoje = new Date();
+
+      let saldoItau = 0, saldoNubank = 0, saldoXPBruto = 0;
+
+      transacoes.forEach(t => {
+        let valorAporteXP = 0;
+        let taxaAnualProduto = t.taxaInvest || 10.50;
+
+        if (t.tipo === 'Entrada') {
+          if (t.conta === 'Itaú') saldoItau += t.valor;
+          if (t.conta === 'Nubank') saldoNubank += t.valor;
+          if (t.conta === 'XP') valorAporteXP = t.valor;
+        } else if (t.tipo === 'Saída') {
+          if (t.forma !== 'Cartão de Crédito') {
+            if (t.conta === 'Itaú') saldoItau -= t.valor;
+            if (t.conta === 'Nubank') saldoNubank -= t.valor;
+            if (t.conta === 'XP') saldoXPBruto -= t.valor;
+          }
+        } else if (t.tipo === 'Transferência') {
+          if (t.contaOrigem === 'Itaú') saldoItau -= t.valor;
+          if (t.contaOrigem === 'Nubank') saldoNubank -= t.valor;
+
+          if (t.contaDestino === 'XP') valorAporteXP = t.valor;
+          if (t.contaDestino === 'Itaú') saldoItau += t.valor;
+          if (t.contaDestino === 'Nubank') saldoNubank += t.valor;
+        }
+
+        if (valorAporteXP > 0) {
+          const taxaDiaria = Math.pow((1 + (taxaAnualProduto / 100)), (1 / 252)) - 1;
+          const diasUteis = calcularDiasUteis(t.data, hoje);
+          const montanteComJuros = valorAporteXP * Math.pow((1 + taxaDiaria), diasUteis);
+          saldoXPBruto += montanteComJuros;
+        }
+      });
+
+      let faturaSamsung = 0, faturaNubank = 0, faturaLatam = 0;
+      const catTotais = {};
+
+      const tbody = document.getElementById('tbHistorico');
+      tbody.innerHTML = '';
+
+      filtradas.sort((a, b) => new Date(b.data) - new Date(a.data));
+
+      filtradas.forEach(t => {
+        if (t.tipo === 'Saída') {
+          if (t.forma === 'Cartão de Crédito') {
+            const diaCompra = parseInt(t.data.split('-')[2]);
+
+            if (t.cartaoUsado === 'Samsung Itaú' && diaCompra <= 21) faturaSamsung += t.valor;
+            if (t.cartaoUsado === 'LATAM Pass' && diaCompra <= 18) faturaLatam += t.valor;
+            if (t.cartaoUsado === 'Nubank' && diaCompra <= 30) faturaNubank += t.valor;
+          }
+          catTotais[t.categoria] = (catTotais[t.categoria] || 0) + t.valor;
+        }
+
+        const tr = document.createElement('tr');
+        const dataFmt = t.data.split('-').reverse().slice(0, 2).join('/');
+        
+        let detalheMeio = "";
+        if (t.tipo === 'Entrada') {
+          detalheMeio = `🏦 ${t.conta} (${t.forma}) - De: ${t.fonteEntrada || 'Geral'}`;
+        } else if (t.forma === 'Cartão de Crédito') {
+          detalheMeio = `💳 ${t.cartaoUsado}`;
+        } else if (t.tipo === 'Transferência') {
+          detalheMeio = `${t.contaOrigem} ➔ ${t.contaDestino}`;
+        } else {
+          detalheMeio = `🏦 ${t.conta} (${t.forma})`;
+        }
+
+        if (t.categoria === 'Reserva/Investimento' || t.contaDestino === 'XP') {
+          detalheMeio += ` (${t.nomeInvest || 'Investimento'} @ ${t.taxaInvest}% a.a.)`;
+        }
+
+        tr.innerHTML = `
+          <td>${dataFmt}</td>
+          <td><strong>${t.desc}</strong></td>
+          <td>${t.tipo}</td>
+          <td>${detalheMeio}</td>
+          <td class="${t.tipo === 'Entrada' ? 'green' : (t.tipo === 'Saída' ? 'red' : 'purple')}">R$ ${t.valor.toFixed(2)}</td>
+          <td><button class="btn-delete" onclick="deletar('${t.idDoc}')">✕</button></td>
+        `;
+        tbody.appendChild(tr);
+      });
+
+      document.getElementById('txtSaldoItau').innerText = `R$ ${saldoItau.toFixed(2)}`;
+      document.getElementById('txtSaldoNubank').innerText = `R$ ${saldoNubank.toFixed(2)}`;
+      document.getElementById('txtSaldoXP').innerText = `R$ ${saldoXPBruto.toFixed(2)}`;
+      document.getElementById('txtPatrimonio').innerText = `R$ ${(saldoItau + saldoNubank + saldoXPBruto).toFixed(2)}`;
+
+      document.getElementById('txtCartaoSamsungInfo').innerText = `R$ ${faturaSamsung.toFixed(2)} / R$ ${TETO_SAMSUNG.toFixed(2)}`;
+      const pctSamsung = Math.min((faturaSamsung / TETO_SAMSUNG) * 100, 100);
+      const barSamsung = document.getElementById('barCartaoSamsung');
+      barSamsung.style.width = `${pctSamsung}%`;
+      if (pctSamsung >= 100) barSamsung.style.backgroundColor = 'var(--red)';
+      else if (pctSamsung >= 80) barSamsung.style.backgroundColor = 'var(--yellow)';
+      else barSamsung.style.backgroundColor = 'var(--green)';
+
+      document.getElementById('txtCartaoLatamInfo').innerText = `R$ ${faturaLatam.toFixed(2)}`;
+      document.getElementById('barCartaoLatam').style.width = `${Math.min((faturaLatam / 3000) * 100, 100)}%`;
+
+      document.getElementById('txtCartaoNubankInfo').innerText = `R$ ${faturaNubank.toFixed(2)}`;
+      document.getElementById('barCartaoNubank').style.width = `${Math.min((faturaNubank / 3000) * 100, 100)}%`;
+
+      document.getElementById('txtReservaInfo').innerText = `R$ ${saldoXPBruto.toFixed(2)} / R$ ${META_RESERVA_XP.toFixed(2)}`;
+      document.getElementById('barReserva').style.width = `${Math.min((saldoXPBruto / META_RESERVA_XP) * 100, 100)}%`;
+
+      renderGrafico(catTotais);
+    }
+
+    function renderGrafico(catTotais) {
+      const ctx = document.getElementById('chartCategorias').getContext('2d');
+      const labels = Object.keys(catTotais);
+      const data = Object.values(catTotais);
+
+      if (chartInstance) chartInstance.destroy();
+
+      if (labels.length === 0) return;
+
+      chartInstance = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+          labels: labels,
+          datasets: [{
+            data: data,
+            backgroundColor: ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#64748b']
+          }]
+        },
+        options: {
+          plugins: { legend: { display: false } },
+          responsive: true,
+          maintainAspectRatio: true
+        }
+      });
+    }
+
+    preencherMeses();
+  </script>
+</body>
+</html>
