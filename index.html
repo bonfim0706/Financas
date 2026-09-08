@@ -62,6 +62,7 @@
     .status-sync { display: inline-block; font-size: 0.75rem; padding: 4px 8px; border-radius: 6px; background: rgba(16, 185, 129, 0.1); color: var(--green); border: 1px solid var(--green); }
     .invest-box { background: rgba(139, 92, 246, 0.08); border: 1px dashed var(--purple); padding: 10px; border-radius: 8px; margin-top: 10px; }
     .entrada-box { background: rgba(16, 185, 129, 0.08); border: 1px dashed var(--green); padding: 10px; border-radius: 8px; margin-top: 10px; }
+    .fatura-box { background: rgba(59, 130, 246, 0.08); border: 1px dashed var(--accent); padding: 10px; border-radius: 8px; margin-top: 10px; }
   </style>
 </head>
 <body>
@@ -136,7 +137,7 @@
         <input type="date" id="data" required>
 
         <label>Descrição</label>
-        <input type="text" id="desc" placeholder="Ex: Salário, Mercado, Aporte CDB" required>
+        <input type="text" id="desc" placeholder="Ex: Salário, Mercado, Aporte CDB, Quitação Fatura" required>
 
         <label>Valor (R$)</label>
         <input type="number" id="valor" step="0.01" placeholder="0,00" required>
@@ -145,6 +146,7 @@
         <select id="tipo" onchange="toggleCamposOperacao()">
           <option value="Saída">Saída (Despesa / Gasto)</option>
           <option value="Entrada">Entrada (Receita / Salário / Ganho)</option>
+          <option value="Pagamento Fatura">Pagamento de Fatura do Cartão</option>
           <option value="Transferência">Transferência entre Minhas Contas</option>
         </select>
 
@@ -155,14 +157,32 @@
           <input type="text" id="fonteEntrada" placeholder="Ex: Empresa X, Freelance, Venda OLX, Pix Pai">
         </div>
 
-        <label>Forma de Pagamento / Meio</label>
-        <select id="forma" onchange="toggleCamposForma()">
-          <option value="Pix">Pix</option>
-          <option value="Débito">Débito em Conta</option>
-          <option value="Cartão de Crédito">Cartão de Crédito (Fatura)</option>
-          <option value="Boleto">Boleto</option>
-          <option value="Dinheiro">Dinheiro</option>
-        </select>
+        <!-- CAMPO EXCLUSIVO DE PAGAMENTO DE FATURA -->
+        <div id="boxPagamentoFatura" class="fatura-box" style="display: none;">
+          <label style="color: var(--accent); font-weight: bold; margin-top: 0;">Quitação da Fatura</label>
+          <label>Qual Cartão Está Sendo Pago?</label>
+          <select id="cartaoPago">
+            <option value="Samsung Itaú">Samsung Itaú</option>
+            <option value="LATAM Pass">LATAM Pass Itaú</option>
+            <option value="Nubank">Nubank</option>
+          </select>
+          <label>Conta Bancária Utilizada para Pagar</label>
+          <select id="contaPagadora">
+            <option value="Itaú">Itaú</option>
+            <option value="Nubank">Nubank</option>
+          </select>
+        </div>
+
+        <div id="boxMeioComum">
+          <label>Forma de Pagamento / Meio</label>
+          <select id="forma" onchange="toggleCamposForma()">
+            <option value="Pix">Pix</option>
+            <option value="Débito">Débito em Conta</option>
+            <option value="Cartão de Crédito">Cartão de Crédito (Fatura)</option>
+            <option value="Boleto">Boleto</option>
+            <option value="Dinheiro">Dinheiro</option>
+          </select>
+        </div>
 
         <div id="boxContaDebito">
           <label id="lblContaBancaria">Conta Bancária Afetada</label>
@@ -197,16 +217,22 @@
           </select>
         </div>
 
-        <label>Categoria</label>
-        <select id="categoria" onchange="toggleCamposInvestimento()">
-          <option value="Alimentação">Alimentação</option>
-          <option value="Moradia">Moradia</option>
-          <option value="Transporte">Transporte</option>
-          <option value="Lazer">Lazer</option>
-          <option value="Fixas/Assinaturas">Fixas/Assinaturas</option>
-          <option value="Reserva/Investimento">Reserva/Investimento</option>
-          <option value="Outros">Outros</option>
-        </select>
+        <div id="boxCategoria">
+          <label>Categoria</label>
+          <select id="categoria" onchange="toggleCamposInvestimento()">
+            <option value="Alimentação/Mercado">🍽️ Alimentação / Mercado</option>
+            <option value="Moradia/Contas">🏠 Moradia / Contas (Luz, Água, Internet)</option>
+            <option value="Transporte/Combustível">🚗 Transporte / Combustível / Uber</option>
+            <option value="Saúde/Pet">💊 Saúde / Farmácia / Pet</option>
+            <option value="Lazer/Entretenimento">🎬 Lazer / Entretenimento</option>
+            <option value="Compras/Vestuário">📦 Compras / Vestuário / Eletrônicos</option>
+            <option value="Educação/Cursos">🎓 Educação / Cursos / Livros</option>
+            <option value="Serviços/Assinaturas">📑 Serviços / Assinaturas / Fixas</option>
+            <option value="Impostos/Tarifas">🏦 Impostos / Tarifas / Taxas</option>
+            <option value="Reserva/Investimento">🎯 Reserva / Investimento</option>
+            <option value="Outros">❓ Outros</option>
+          </select>
+        </div>
 
         <div id="boxInvestimento" class="invest-box" style="display: none;">
           <label style="color: var(--purple); font-weight: bold; margin-top: 0;">Configuração do Investimento</label>
@@ -252,13 +278,14 @@
     // 1. COLE SUAS CREDENCIAIS DO FIREBASE AQUI ABAIXO:
     // =====================================================
     const firebaseConfig = {
-    apiKey: "AIzaSyB0XKUp_eY04Hx7Bpavtvv-7rQvRa5LF-I",
-    authDomain: "minhas-financas-726f9.firebaseapp.com",
-    projectId: "minhas-financas-726f9",
-    storageBucket: "minhas-financas-726f9.firebasestorage.app",
-    messagingSenderId: "267613743208",
-    appId: "1:267613743208:web:1c8c85d798fe19c977f3dd"
-  };
+   const firebaseConfig = {
+    apiKey: "AIzaSyB0XKUp_eY04Hx7Bpavtvv-7rQvRa5LF-I",
+    authDomain: "minhas-financas-726f9.firebaseapp.com",
+    projectId: "minhas-financas-726f9",
+    storageBucket: "minhas-financas-726f9.firebasestorage.app",
+    messagingSenderId: "267613743208",
+    appId: "1:267613743208:web:1c8c85d798fe19c977f3dd"
+  };
 
     firebase.initializeApp(firebaseConfig);
     const db = firebase.firestore();
@@ -299,21 +326,33 @@
       const tipo = document.getElementById('tipo').value;
       const lblConta = document.getElementById('lblContaBancaria');
       const boxEntrada = document.getElementById('boxOrigemEntrada');
+      const boxFatura = document.getElementById('boxPagamentoFatura');
+      const boxMeioComum = document.getElementById('boxMeioComum');
+      const boxCategoria = document.getElementById('boxCategoria');
+
+      // Oculta tudo para redefinir a exibição
+      boxEntrada.style.display = 'none';
+      boxFatura.style.display = 'none';
+      boxMeioComum.style.display = 'block';
+      boxCategoria.style.display = 'block';
+      document.getElementById('boxTransferencia').style.display = 'none';
 
       if (tipo === 'Entrada') {
         lblConta.innerText = "Conta que Recebeu o Dinheiro";
         boxEntrada.style.display = 'block';
-      } else {
-        lblConta.innerText = "Conta Bancária Afetada";
-        boxEntrada.style.display = 'none';
-      }
-
-      if (tipo === 'Transferência') {
+        toggleCamposForma();
+      } else if (tipo === 'Pagamento Fatura') {
+        boxFatura.style.display = 'block';
+        boxMeioComum.style.display = 'none';
+        boxCategoria.style.display = 'none';
+        document.getElementById('boxContaDebito').style.display = 'none';
+        document.getElementById('boxCartaoCredito').style.display = 'none';
+      } else if (tipo === 'Transferência') {
         document.getElementById('boxContaDebito').style.display = 'none';
         document.getElementById('boxCartaoCredito').style.display = 'none';
         document.getElementById('boxTransferencia').style.display = 'block';
       } else {
-        document.getElementById('boxTransferencia').style.display = 'none';
+        lblConta.innerText = "Conta Bancária Afetada";
         toggleCamposForma();
       }
       toggleCamposInvestimento();
@@ -325,9 +364,9 @@
       const contaDestino = document.getElementById('contaDestino').value;
       const contaNormal = document.getElementById('conta').value;
 
-      const isXP = (tipo === 'Transferência' && contaDestino === 'XP') || (tipo !== 'Transferência' && contaNormal === 'XP');
+      const isXP = (tipo === 'Transferência' && contaDestino === 'XP') || (tipo !== 'Transferência' && tipo !== 'Pagamento Fatura' && contaNormal === 'XP');
 
-      if (cat === 'Reserva/Investimento' || isXP) {
+      if (tipo !== 'Pagamento Fatura' && (cat === 'Reserva/Investimento' || isXP)) {
         document.getElementById('boxInvestimento').style.display = 'block';
       } else {
         document.getElementById('boxInvestimento').style.display = 'none';
@@ -379,11 +418,13 @@
         desc: document.getElementById('desc').value,
         valor: parseFloat(document.getElementById('valor').value),
         tipo: tipo,
-        forma: forma,
+        forma: tipo === 'Pagamento Fatura' ? 'Débito' : forma,
         fonteEntrada: tipo === 'Entrada' ? (document.getElementById('fonteEntrada').value || 'Não informada') : null,
-        cartaoUsado: forma === 'Cartão de Crédito' ? document.getElementById('cartaoUsado').value : null,
-        categoria: document.getElementById('categoria').value,
-        conta: (tipo !== 'Transferência' && forma !== 'Cartão de Crédito') ? document.getElementById('conta').value : null,
+        cartaoPago: tipo === 'Pagamento Fatura' ? document.getElementById('cartaoPago').value : null,
+        contaPagadora: tipo === 'Pagamento Fatura' ? document.getElementById('contaPagadora').value : null,
+        cartaoUsado: (tipo === 'Saída' && forma === 'Cartão de Crédito') ? document.getElementById('cartaoUsado').value : null,
+        categoria: tipo === 'Pagamento Fatura' ? 'Pagamento Fatura' : document.getElementById('categoria').value,
+        conta: (tipo !== 'Transferência' && tipo !== 'Pagamento Fatura' && forma !== 'Cartão de Crédito') ? document.getElementById('conta').value : null,
         contaOrigem: tipo === 'Transferência' ? document.getElementById('contaOrigem').value : null,
         contaDestino: tipo === 'Transferência' ? document.getElementById('contaDestino').value : null,
         nomeInvest: document.getElementById('nomeInvest').value || 'CDB XP',
@@ -426,6 +467,9 @@
             if (t.conta === 'Nubank') saldoNubank -= t.valor;
             if (t.conta === 'XP') saldoXPBruto -= t.valor;
           }
+        } else if (t.tipo === 'Pagamento Fatura') {
+          if (t.contaPagadora === 'Itaú') saldoItau -= t.valor;
+          if (t.contaPagadora === 'Nubank') saldoNubank -= t.valor;
         } else if (t.tipo === 'Transferência') {
           if (t.contaOrigem === 'Itaú') saldoItau -= t.valor;
           if (t.contaOrigem === 'Nubank') saldoNubank -= t.valor;
@@ -461,6 +505,11 @@
             if (t.cartaoUsado === 'Nubank' && diaCompra <= 30) faturaNubank += t.valor;
           }
           catTotais[t.categoria] = (catTotais[t.categoria] || 0) + t.valor;
+        } else if (t.tipo === 'Pagamento Fatura') {
+          // Abate o valor pago da fatura do cartão no mês
+          if (t.cartaoPago === 'Samsung Itaú') faturaSamsung -= t.valor;
+          if (t.cartaoPago === 'LATAM Pass') faturaLatam -= t.valor;
+          if (t.cartaoPago === 'Nubank') faturaNubank -= t.valor;
         }
 
         const tr = document.createElement('tr');
@@ -469,6 +518,8 @@
         let detalheMeio = "";
         if (t.tipo === 'Entrada') {
           detalheMeio = `🏦 ${t.conta} (${t.forma}) - De: ${t.fonteEntrada || 'Geral'}`;
+        } else if (t.tipo === 'Pagamento Fatura') {
+          detalheMeio = `💳 Pago Fatura ${t.cartaoPago} via ${t.contaPagadora}`;
         } else if (t.forma === 'Cartão de Crédito') {
           detalheMeio = `💳 ${t.cartaoUsado}`;
         } else if (t.tipo === 'Transferência') {
@@ -486,11 +537,16 @@
           <td><strong>${t.desc}</strong></td>
           <td>${t.tipo}</td>
           <td>${detalheMeio}</td>
-          <td class="${t.tipo === 'Entrada' ? 'green' : (t.tipo === 'Saída' ? 'red' : 'purple')}">R$ ${t.valor.toFixed(2)}</td>
+          <td class="${t.tipo === 'Entrada' ? 'green' : (t.tipo === 'Saída' ? 'red' : 'accent')}">R$ ${t.valor.toFixed(2)}</td>
           <td><button class="btn-delete" onclick="deletar('${t.idDoc}')">✕</button></td>
         `;
         tbody.appendChild(tr);
       });
+
+      // Garante que o valor exibido nas faturas não seja negativo
+      faturaSamsung = Math.max(0, faturaSamsung);
+      faturaLatam = Math.max(0, faturaLatam);
+      faturaNubank = Math.max(0, faturaNubank);
 
       document.getElementById('txtSaldoItau').innerText = `R$ ${saldoItau.toFixed(2)}`;
       document.getElementById('txtSaldoNubank').innerText = `R$ ${saldoNubank.toFixed(2)}`;
@@ -532,7 +588,7 @@
           labels: labels,
           datasets: [{
             data: data,
-            backgroundColor: ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#64748b']
+            backgroundColor: ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#64748b', '#d97706', '#84cc16']
           }]
         },
         options: {
